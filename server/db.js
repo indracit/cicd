@@ -1,6 +1,7 @@
 const mysql = require('mysql2/promise');
 const crypto = require('crypto');
 const dotenv = require('dotenv');
+const logger = require('./logger');
 dotenv.config();
 
 
@@ -17,6 +18,8 @@ function hashPassword(password) {
 }
 
 async function createPool() {
+  logger.info('Creating database connection pool', { host: DB_HOST, database: DB_NAME, port: DB_PORT });
+
   // Ensure database exists first
   const tmpConn = await mysql.createConnection({
     host: DB_HOST,
@@ -25,6 +28,7 @@ async function createPool() {
     port: DB_PORT,
     multipleStatements: true,
   });
+
   await tmpConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
   await tmpConn.end();
 
@@ -38,10 +42,13 @@ async function createPool() {
     connectionLimit: 10,
     queueLimit: 0,
   });
+
+  logger.info('Database pool created successfully');
   return pool;
 }
 
 async function init(defaultUser, defaultPass) {
+  logger.info('Initializing database', { defaultUser: defaultUser ? 'provided' : 'none' });
   const pool = await createPool();
 
   const createTableSQL = `
@@ -54,10 +61,11 @@ async function init(defaultUser, defaultPass) {
   `;
 
   await pool.query(createTableSQL);
+  logger.info('Ensured user table exists');
 
   if (defaultUser && defaultPass) {
     const hashed = hashPassword(defaultPass);
-    // Insert default user or update password if username exists
+    logger.info('Creating or updating default admin user', { username: defaultUser });
     await pool.query(
       'INSERT INTO `user` (username, password) VALUES (?, ?) ON DUPLICATE KEY UPDATE password = VALUES(password)',
       [defaultUser, hashed]

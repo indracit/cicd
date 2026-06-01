@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
+const logger = require('./logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,33 +20,47 @@ app.get('/health', (req, res) => {
 app.post('/auth', async (req, res) => {
   try {
     const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ success: false, error: 'username and password required' });
+    if (!username || !password) {
+      logger.warn('Auth request missing username or password');
+      return res.status(400).json({ success: false, error: 'username and password required' });
+    }
+
     const [rows] = await pool.query('SELECT id, username, password FROM `user` WHERE username = ?', [username]);
-    if (!rows || rows.length === 0) return res.status(401).json({ success: false, error: 'invalid credentials' });
+    if (!rows || rows.length === 0) {
+      logger.warn('Invalid auth attempt', { username });
+      return res.status(401).json({ success: false, error: 'invalid credentials' });
+    }
+
     const user = rows[0];
     const hashed = require('crypto').createHash('sha256').update(password).digest('hex');
-    if (hashed !== user.password) return res.status(401).json({ success: false, error: 'invalid credentials' });
+    if (hashed !== user.password) {
+      logger.warn('Invalid auth attempt for existing user', { username });
+      return res.status(401).json({ success: false, error: 'invalid credentials' });
+    }
 
     const token = jwt.sign({ userId: user.id, username: user.username }, process.env.JWT_SECRET || 'change-me', { expiresIn: '1h' });
+    logger.info('User authenticated', { username });
     res.json({ success: true, token });
   } catch (err) {
-    console.error('Auth error', err);
+    logger.error('Auth error', { error: err.message });
     res.status(500).json({ success: false, error: 'internal error' });
   }
 });
 
 async function start() {
   try {
-    const defaultUser = process.env.DEFAULT_USER;
-    const defaultPass = process.env.DEFAULT_PASS;
+    const defaultUser = 'admin';
+    const defaultPass = 'adminpass';
     const initialized = await db.init(defaultUser, defaultPass);
     pool = initialized.pool;
 
+    logger.info('Database initialized, starting server');
+
     app.listen(PORT, () => {
-      console.log(`Server listening on port ${PORT}`);
+      logger.info(`Server listening on port ${PORT}`);
     });
   } catch (err) {
-    console.error('Failed to start server', err);
+    logger.error('Failed to start server', { error: err.message });
     process.exit(1);
   }
 }
