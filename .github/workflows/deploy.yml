@@ -1,0 +1,70 @@
+name: Build, Push, and Deploy to VM
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: project-9c77ce7d-158f-4f66-926
+  REGION: us-central1                 # your Artifact Registry region
+  REPOSITORY: my-app-repo             # your AR repository name
+  CLIENT_IMAGE: client
+  SERVER_IMAGE: server
+
+  # If using WIF – replace with your actual resource names
+  WIF_PROVIDER: projects/1060720871947/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
+  SERVICE_ACCOUNT: 1060720871947-compute@developer.gserviceaccount.com
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---------------------------
+      # Authenticate using Workload Identity Federation (no JSON key)
+      # ---------------------------
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      # ---------------------------
+      # Build and push React client
+      # ---------------------------
+      - name: Build client image
+        working-directory: ./client
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:${{ github.sha }} .
+          docker tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:${{ github.sha }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:latest
+
+      - name: Push client image
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:latest
+
+      # ---------------------------
+      # Build and push Express server
+      # ---------------------------
+      - name: Build server image
+        working-directory: ./server
+        run: |
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:${{ github.sha }} .
+          docker tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:${{ github.sha }} ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:latest
+
+      - name: Push server image
+        run: |
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:latest
+
