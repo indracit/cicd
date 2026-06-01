@@ -7,12 +7,12 @@ on:
 
 env:
   PROJECT_ID: project-9c77ce7d-158f-4f66-926
-  REGION: us-central1                 # your Artifact Registry region
-  REPOSITORY: my-app-repo             # your AR repository name
+  REGION: us-central1
+  REPOSITORY: my-app-repo
   CLIENT_IMAGE: client
   SERVER_IMAGE: server
 
-  # If using WIF – replace with your actual resource names
+  # Workload Identity Federation (WIF)
   WIF_PROVIDER: projects/1060720871947/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider
   SERVICE_ACCOUNT: 1060720871947-compute@developer.gserviceaccount.com
 
@@ -21,28 +21,34 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
-      id-token: 'write'
+      id-token: 'write'          # Required for OIDC (WIF)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ---------------------------
+      # ------------------------------------------------------------
       # Authenticate using Workload Identity Federation (no JSON key)
-      # ---------------------------
+      # Request an ACCESS_TOKEN (not just an identity token)
+      # ------------------------------------------------------------
       - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.SERVICE_ACCOUNT }}
+          token_format: 'access_token'          # <-- CRITICAL for Docker
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      # ------------------------------------------------------------
+      # Log in to Artifact Registry using the obtained access token
+      # ------------------------------------------------------------
+      - name: Login to Artifact Registry
+        run: |
+          echo "${{ steps.auth.outputs.access_token }}" | docker login -u oauth2accesstoken --password-stdin https://${{ env.REGION }}-docker.pkg.dev
 
-      # ---------------------------
+      # ------------------------------------------------------------
       # Build and push React client
-      # ---------------------------
+      # ------------------------------------------------------------
       - name: Build client image
         working-directory: ./client
         run: |
@@ -54,9 +60,9 @@ jobs:
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:${{ github.sha }}
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.CLIENT_IMAGE }}:latest
 
-      # ---------------------------
+      # ------------------------------------------------------------
       # Build and push Express server
-      # ---------------------------
+      # ------------------------------------------------------------
       - name: Build server image
         working-directory: ./server
         run: |
@@ -67,4 +73,3 @@ jobs:
         run: |
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:${{ github.sha }}
           docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVER_IMAGE }}:latest
-
