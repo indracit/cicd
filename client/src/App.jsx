@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import './App.css'
 
-function App() {
+function App( ) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
