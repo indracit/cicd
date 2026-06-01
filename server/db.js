@@ -3,19 +3,13 @@ const crypto = require('crypto');
 const dotenv = require('dotenv');
 dotenv.config();
 
-console.log('DB Config:', {
-  DB_HOST: process.env.DB_HOST,
-  DB_USER: process.env.DB_USER,
-  DB_PASSWORD: process.env.DB_PASSWORD ? '***' : undefined,
-  DB_NAME: process.env.DB_NAME,
-  DB_PORT: process.env.DB_PORT,
-});
+
 const {
-  DB_HOST ,
-  DB_USER ,
-  DB_PASSWORD, 
-  DB_NAME ,
-  DB_PORT 
+  DB_HOST = '172.22.0.3',
+  DB_USER = 'cicduser',
+  DB_PASSWORD = 'ArR68MdF2jYwGidk',
+  DB_NAME = 'cicddb',
+  DB_PORT = '3306'
 } = process.env;
 
 function hashPassword(password) {
